@@ -916,7 +916,51 @@ document.getElementById('download-btn').addEventListener('click', () => {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    // ダウンロード完了後、次の利用者のためにリセット
+    setTimeout(() => resetForNext(), 800);
 });
+
+// ── RESET FOR NEXT USER ───────────────────────────────────────────────
+function resetForNext() {
+    // 状態を完全リセット
+    currentPdfWithSigs = null;
+    originalPdfBytes = null;
+
+    // チェックボックスをすべて外す
+    document.querySelectorAll('.agree-check').forEach(cb => cb.checked = false);
+
+    // 全キャンバスをクリア
+    CANVAS_IDS.forEach(id => {
+        clearCanvas(id);
+        drawnMap[id] = false;
+    });
+
+    // ステータス・プレビューをリセット
+    document.getElementById('status').textContent = '';
+    document.getElementById('preview-content').classList.remove('visible');
+    document.getElementById('preview-empty').style.display = 'block';
+
+    // アップロードエリアをリセット
+    document.getElementById('upload-success').classList.remove('visible');
+    document.getElementById('upload-filename').textContent = '';
+    document.getElementById('pdf-upload').value = '';
+    document.getElementById('btn-to-user').classList.remove('enabled');
+
+    // 利用者入力エリアを非表示に戻す
+    document.getElementById('user-locked').style.display = 'block';
+    document.getElementById('user-input-area').style.display = 'none';
+
+    // 全タブをリセットしてタブ1（PDF準備）に戻る
+    document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.step-tab').forEach(t => t.classList.remove('active', 'done'));
+    document.getElementById('section-admin').classList.add('active');
+    document.getElementById('tab-admin').classList.add('active');
+
+    // 完了メッセージをタブ1に一時表示
+    document.getElementById('admin-status').textContent = '✅ 保存完了！次のPDFをアップロードしてください。';
+    setTimeout(() => { document.getElementById('admin-status').textContent = ''; }, 4000);
+}
 
 // ── INIT ──────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
