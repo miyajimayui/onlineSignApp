@@ -283,7 +283,7 @@
         /* ======= DATE FIELDS ======= */
         .date-row {
             display: grid;
-            grid-template-columns: 2fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 10px;
         }
         .date-field { display: flex; flex-direction: column; }
@@ -344,6 +344,20 @@
             transition: all 0.15s;
         }
         .btn-clear-canvas:hover { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+        .btn-clear-pdf {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 3px 10px;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-clear-pdf:hover { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
 
         .sig-grid {
             display: grid;
@@ -510,8 +524,9 @@
             </div>
 
             <div class="upload-success" id="upload-success">
-                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                <span id="upload-filename">ファイル読み込み完了</span>
+                <svg viewBox="0 0 24 24" style="flex-shrink:0;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                <span id="upload-filename" style="flex:1;">ファイル読み込み完了</span>
+                <button onclick="clearUploadedPdf()" class="btn-clear-pdf">クリア</button>
             </div>
 
             <!-- PDF プレビュー（アップロード後に表示） -->
@@ -627,9 +642,11 @@
                         署名
                     </div>
                     <div class="card-body">
-                        <div class="sig-grid">
-                            <div class="date-field">
-                                <div class="field-label">
+
+                        <!-- 利用者署名：代筆者署名(flex:7)と同幅 -->
+                        <div style="display:flex; gap:12px;">
+                            <div style="flex:7;">
+                                <div class="field-label" style="margin-bottom:6px;">
                                     <span>利用者署名</span>
                                     <button class="btn-clear-canvas" onclick="clearCanvas('canvas-user')">クリア</button>
                                 </div>
@@ -638,8 +655,15 @@
                                     <div class="canvas-placeholder">ここに署名</div>
                                 </div>
                             </div>
-                            <div class="date-field">
-                                <div class="field-label">
+                            <div style="flex:3; visibility:hidden;"></div>
+                        </div>
+
+                        <!-- 代筆者エリア：代筆者署名(7) + 続柄(3) -->
+                        <div style="margin-top:10px;"></div>
+                        <div style="display:flex; gap:12px; align-items:flex-start;">
+                            <!-- 代筆者署名 -->
+                            <div style="flex:7;">
+                                <div class="field-label" style="margin-bottom:6px;">
                                     <span>代筆者署名</span>
                                     <button class="btn-clear-canvas" onclick="clearCanvas('canvas-proxy')">クリア</button>
                                 </div>
@@ -648,7 +672,19 @@
                                     <div class="canvas-placeholder">ここに署名</div>
                                 </div>
                             </div>
+                            <!-- 続柄 -->
+                            <div style="flex:3;">
+                                <div class="field-label" style="margin-bottom:6px;">
+                                    <span>続柄</span>
+                                    <button class="btn-clear-canvas" onclick="clearCanvas('canvas-relation')">クリア</button>
+                                </div>
+                                <div class="canvas-wrapper sig-canvas-wrap">
+                                    <canvas id="canvas-relation"></canvas>
+                                    <div class="canvas-placeholder">例：長男</div>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
                 </div>
 
@@ -666,7 +702,6 @@
                 <p>同意・署名タブでプレビューを生成してください。</p>
             </div>
             <div class="preview-section" id="preview-content">
-                <!-- ▼ 修正⑥: プレビューの説明テキストを追加 -->
                 <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:10px; text-align:center;">
                     ↕ グレーのエリアをスワイプしてスクロールできます
                 </p>
@@ -690,9 +725,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 let originalPdfBytes = null;
 let currentPdfWithSigs = null;
-const CANVAS_IDS = ['canvas-year', 'canvas-month', 'canvas-day', 'canvas-user', 'canvas-proxy'];
+const CANVAS_IDS = ['canvas-year', 'canvas-month', 'canvas-day', 'canvas-user', 'canvas-proxy', 'canvas-relation'];
 const ctxMap = {};
 const drawnMap = {};
+
 
 // ── LOADING OVERLAY ───────────────────────────────────────────────────
 function showLoading(msg) {
@@ -714,10 +750,14 @@ function showSection(name) {
     document.getElementById('tab-' + name).classList.add('active');
 
     if (name === 'user') {
+        // PDFが読み込まれていれば入力エリアを表示（タブ直接押下でも対応）
+        if (originalPdfBytes) {
+            document.getElementById('user-locked').style.display = 'none';
+            document.getElementById('user-input-area').style.display = 'block';
+        }
         setTimeout(() => initAllCanvases(), 50);
     }
 
-    // ▼ 修正⑦: タブ切り替え時に最上部へスクロール（iOSでの表示ズレ防止）
     window.scrollTo(0, 0);
 }
 
@@ -793,6 +833,14 @@ function initCanvas(id) {
     const dpr = window.devicePixelRatio || 1;
     const w = wrapper.clientWidth;
     const h = wrapper.clientHeight;
+
+    // 描画済みの場合は内容を退避してリサイズ後に復元する
+    const alreadyDrawn = drawnMap[id];
+    let savedImage = null;
+    if (alreadyDrawn && canvas.width > 0 && canvas.height > 0) {
+        savedImage = canvas.toDataURL('image/png');
+    }
+
     canvas.width  = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width  = w + 'px';
@@ -805,7 +853,23 @@ function initCanvas(id) {
     ctx.lineJoin  = 'round';
     ctx.strokeStyle = '#1a1a1a';
     ctxMap[id] = { ctx, dpr, w, h };
-    drawnMap[id] = false;
+
+    if (savedImage) {
+        const img = new Image();
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, w, h);
+            ctxMap[id].ctx.lineWidth = 3;
+            ctxMap[id].ctx.lineCap   = 'round';
+            ctxMap[id].ctx.lineJoin  = 'round';
+            ctxMap[id].ctx.strokeStyle = '#1a1a1a';
+        };
+        img.src = savedImage;
+        drawnMap[id] = true;
+        const placeholder = canvas.parentElement.querySelector('.canvas-placeholder');
+        if (placeholder) placeholder.style.opacity = '0';
+    } else {
+        drawnMap[id] = false;
+    }
 }
 
 function initAllCanvases() {
@@ -915,11 +979,12 @@ document.getElementById('generate-preview-btn').addEventListener('click', async 
         });
 
         const embedConfig = [
-            { id: 'canvas-year',  x: 405, y: 130, w: 50,  h: 25 },
-            { id: 'canvas-month', x: 455, y: 130, w: 40,  h: 25 },
-            { id: 'canvas-day',   x: 498, y: 130, w: 40,  h: 25 },
-            { id: 'canvas-user',  x: 420, y: 100, w: 120, h: 35 },
-            { id: 'canvas-proxy', x: 420, y: 75,  w: 120, h: 35 }
+            { id: 'canvas-year',     x: 405, y: 130, w: 40,  h: 25 },
+            { id: 'canvas-month',    x: 455, y: 130, w: 40,  h: 25 },
+            { id: 'canvas-day',      x: 498, y: 130, w: 40,  h: 25 },
+            { id: 'canvas-user',     x: 420, y: 100, w: 120, h: 25 },
+            { id: 'canvas-proxy',    x: 420, y: 80,  w: 120, h: 25 },
+            { id: 'canvas-relation', x: 395, y: 80,  w:  35, h: 15 },
         ];
 
         for (const item of embedConfig) {
@@ -988,6 +1053,17 @@ document.getElementById('generate-preview-btn').addEventListener('click', async 
 // ── DOWNLOAD ─────────────────────────────────────────────────────────
 document.getElementById('download-btn').addEventListener('click', () => {
     if (!currentPdfWithSigs) return;
+
+    // 未チェック項目がある場合は確認ダイアログを表示
+    const checks = document.querySelectorAll('.agree-check');
+    const uncheckedCount = Array.from(checks).filter(cb => !cb.checked).length;
+    if (uncheckedCount > 0) {
+        const ok = window.confirm(
+            `同意されていない項目が ${uncheckedCount} 件あります。\nこのまま処理を進めますか？`
+        );
+        if (!ok) return;
+    }
+
     const blob = new Blob([currentPdfWithSigs], { type: 'application/pdf' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -1000,6 +1076,32 @@ document.getElementById('download-btn').addEventListener('click', () => {
 
     setTimeout(() => resetForNext(), 800);
 });
+
+// ── CLEAR UPLOADED PDF ───────────────────────────────────────────────
+function clearUploadedPdf() {
+    originalPdfBytes = null;
+
+    // アップロード表示をリセット
+    document.getElementById('upload-success').classList.remove('visible');
+    document.getElementById('upload-filename').textContent = '';
+    document.getElementById('pdf-upload').value = '';
+    document.getElementById('btn-to-user').classList.remove('enabled');
+
+    // PDFプレビューを非表示
+    document.getElementById('admin-pdf-preview').style.display = 'none';
+    adminPdfDoc = null;
+    adminCurPage = 1;
+    adminTotalPages = 1;
+    const adminCanvas = document.getElementById('admin-preview-canvas');
+    if (adminCanvas) {
+        const ctx = adminCanvas.getContext('2d');
+        ctx.clearRect(0, 0, adminCanvas.width, adminCanvas.height);
+    }
+
+    // ②③タブのdone状態もリセット
+    document.getElementById('tab-user').classList.remove('done');
+    document.getElementById('tab-preview').classList.remove('done');
+}
 
 // ── RESET FOR NEXT USER ───────────────────────────────────────────────
 function resetForNext() {
